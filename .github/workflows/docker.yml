@@ -1,0 +1,25 @@
+name: Publish to Docker Hub
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - 0.*
+      - 1.*
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Build and Push the Docker image
+      env:
+        DOCKER_USER: nikoheikkila
+      run: |
+        echo ${{ secrets.DockerHubToken }} | docker login -u ${DOCKER_USER} --password-stdin
+        docker build -t ${DOCKER_USER}/go-link-health:latest .
+        docker push ${DOCKER_USER}/go-link-health:latest
