@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/gocolly/colly"
@@ -17,15 +18,38 @@ const HTTP_MAX_STATUS = 299
 
 func main() {
 	target, urlError := getURL(os.Args)
-
-	if urlError != nil {
-		handleError(urlError)
-		os.Exit(1)
-	}
+	handleFatal(urlError)
 
 	collector := getCollector()
-	collector.Visit(target.String())
+
+	handleError(collector.Visit(target.String()))
 	collector.Wait()
+}
+
+type Link struct {
+	url    *url.URL
+	status int
+}
+
+func (link *Link) isHealthy() bool {
+	return link.status >= HTTP_MIN_STATUS && link.status <= HTTP_MAX_STATUS
+}
+
+func (link *Link) printFailure() {
+	fmt.Printf(
+		"Link to %s is %s with status %d\n",
+		link.url,
+		aurora.Red("down"),
+		aurora.Bold(link.status),
+	)
+}
+
+func (link *Link) printSuccess() {
+	fmt.Printf(
+		"Link to %s is %s\n",
+		link.url,
+		aurora.Green("healthy"),
+	)
 }
 
 func getURL(args []string) (*url.URL, error) {
@@ -47,61 +71,66 @@ func getCollector() *colly.Collector {
 		colly.Async(true),
 		colly.UserAgent(*userAgent),
 		colly.MaxDepth(*depth),
+		colly.URLFilters(
+			regexp.MustCompile("https?://.+$"),
+		),
 	)
 
-	err := collector.Limit(&colly.LimitRule{
+	limitError := collector.Limit(&colly.LimitRule{
 		DomainGlob:  "*",
 		Parallelism: *threads,
 		RandomDelay: 1 * time.Second,
 	})
 
-	if err != nil {
-		handleError(err)
-	}
-
-	setHandlers(collector)
-
-	return collector
+	handleError(limitError)
+	return setHandlers(collector)
 }
 
-func setHandlers(collector *colly.Collector) {
+func setHandlers(collector *colly.Collector) *colly.Collector {
 	collector.OnError(func(response *colly.Response, err error) {
 		url := response.Request.URL
 		reason := err.Error()
+
+		if reason == "" {
+			reason = "Unknown"
+		}
 
 		handleError(fmt.Errorf("Request to %s failed. Reason: %s", url, reason))
 	})
 
 	collector.OnHTML("a[href]", func(element *colly.HTMLElement) {
 		link := element.Attr("href")
-		element.Request.Visit(link)
+
+		/* Discard errors since they have little value. */
+		_ = element.Request.Visit(link)
 	})
 
 	collector.OnResponse(func(response *colly.Response) {
-		url := response.Request.URL.String()
-		status := response.StatusCode
+		link := Link{
+			url:    response.Request.URL,
+			status: response.StatusCode,
+		}
 
-		if !isHealthy(status) {
-			printError(url, status)
+		if !link.isHealthy() {
+			link.printFailure()
 			return
 		}
 
-		printSuccess(url)
+		link.printSuccess()
 	})
-}
 
-func isHealthy(status int) bool {
-	return status >= HTTP_MIN_STATUS && status <= HTTP_MAX_STATUS
+	return collector
 }
 
 func handleError(error error) {
-	fmt.Println(aurora.Red("Error:"), error)
+	if error != nil {
+		fmt.Println(aurora.Red("Error:"), error)
+	}
 }
 
-func printSuccess(url string) {
-	fmt.Printf("Link to %s is %s\n", url, aurora.Green("healthy"))
-}
-
-func printError(url string, status int) {
-	fmt.Printf("Link to %s is %s with status %d\n", url, aurora.Red("down"), aurora.Bold(status))
+func handleFatal(error error) {
+	if error != nil {
+		fmt.Println(aurora.BrightRed("Fatal:"), error)
+		os.Exit(1)
+	}
 }
