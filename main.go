@@ -26,15 +26,25 @@ func main() {
 	collector.Wait()
 }
 
+/**
+ * Represents a requested hyperlink containing the url and status
+ * derived from the requests response.
+ */
 type Link struct {
 	url    *url.URL
 	status int
 }
 
+/**
+ * Checks whether the link was healthy by asserting the status in 2xx range.
+ */
 func (link *Link) isHealthy() bool {
 	return link.status >= HTTP_MIN_STATUS && link.status <= HTTP_MAX_STATUS
 }
 
+/**
+ * Formats a message for failed link check.
+ */
 func (link *Link) printFailure() {
 	fmt.Printf(
 		"Link to %s is %s with status %d\n",
@@ -44,6 +54,9 @@ func (link *Link) printFailure() {
 	)
 }
 
+/**
+ * Formats a message for successful link check.
+ */
 func (link *Link) printSuccess() {
 	fmt.Printf(
 		"Link to %s is %s\n",
@@ -52,6 +65,10 @@ func (link *Link) printSuccess() {
 	)
 }
 
+/**
+ * Retrieves the URL from user inputted arguments.
+ * Returns either a custom error value or one belonging to the `url` struct.
+ */
 func getURL(args []string) (*url.URL, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("Usage: %s <url>\n", args[0])
@@ -60,6 +77,9 @@ func getURL(args []string) (*url.URL, error) {
 	return url.Parse(args[1])
 }
 
+/**
+ * Initializes a new collector instance with static configuration.
+ */
 func getCollector() *colly.Collector {
 	userAgent := flag.String("user-agent", DEFAULT_USER_AGENT, "User-Agent for scraping")
 	depth := flag.Int("depth", 2, "Recursion depth for scraping")
@@ -86,6 +106,10 @@ func getCollector() *colly.Collector {
 	return setHandlers(collector)
 }
 
+/**
+ * Sets necessary handlers for the given collector instance
+ * and returns it.
+ */
 func setHandlers(collector *colly.Collector) *colly.Collector {
 	collector.OnError(func(response *colly.Response, err error) {
 		url := response.Request.URL
@@ -122,12 +146,19 @@ func setHandlers(collector *colly.Collector) *colly.Collector {
 	return collector
 }
 
+/**
+ * Prints coloured errors on their own line.
+ */
 func handleError(error error) {
 	if error != nil {
 		fmt.Println(aurora.Red("Error:"), error)
 	}
 }
 
+/**
+ * Prints coloured fatal errors on their own line and exits
+ * the program back to shell with return code of 1.
+ */
 func handleFatal(error error) {
 	if error != nil {
 		fmt.Println(aurora.BrightRed("Fatal:"), error)
